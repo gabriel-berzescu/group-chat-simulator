@@ -4,6 +4,24 @@ Planul e împărțit pe faze astfel încât la finalul **Fazei 1** să existe de
 felie verticală completă (browser → FastAPI → Ollama → înapoi în browser).
 Detaliile de produs sunt în [SPEC.md](SPEC.md).
 
+## Mod de lucru — Test Driven Development
+
+Lucrăm în TDD, în ciclul clasic red–green–refactor:
+
+1. **Red** — scriem întâi testul pentru comportamentul nou și îl vedem picând.
+2. **Green** — scriem implementarea minimă care face testul să treacă.
+3. **Refactor** — curățăm codul, cu testele verzi ca plasă de siguranță.
+
+Concret pentru proiectul ăsta:
+
+- Testele stau în `test_server.py` și rulează cu `pytest`, folosind
+  `TestClient`-ul din FastAPI (nu e nevoie de server pornit).
+- **Ollama nu e chemat din teste** — apelurile HTTP către el se mock-uiesc,
+  ca testele să fie rapide și deterministe.
+- Secțiunile "**Test:**" de la finalul fiecărei faze rămân ca verificare
+  manuală de acceptanță (în browser, cu Ollama real); ele completează
+  testele automate, nu le înlocuiesc.
+
 ## Faza 0 — Scheletul proiectului
 
 - [ ] `requirements.txt` (fastapi, uvicorn, httpx)
@@ -57,7 +75,7 @@ că în Faza 1 răspunsul e sincron și indicatorul n-ar avea încă ce arăta.
 ## Faza 4 — Robustețe și finisaj
 
 - [ ] Model configurabil prin variabilă de mediu (`OLLAMA_MODEL`,
-      default `llama3.2:3b`)
+      default `gemma4:e2b`)
 - [ ] Tratarea erorilor: Ollama căzut sau timeout → mesaj de sistem în chat,
       nu crash
 - [ ] Limitarea istoricului trimis la Ollama (ultimele N mesaje) ca să nu

@@ -37,12 +37,14 @@ imediat.
 - Un model mic descărcat local, de exemplu:
 
 ```
-ollama pull llama3.2:3b
+ollama pull gemma4:e2b
 ```
 
 ## Pornire rapidă
 
 ```
+python -m venv .venv
+.venv\Scripts\activate     # Windows (pe Linux/macOS: source .venv/bin/activate)
 pip install -r requirements.txt
 uvicorn server:app
 ```
@@ -50,3 +52,11 @@ uvicorn server:app
 Apoi deschide http://localhost:8000 în browser și intră în vorbă.
 
 Modelul folosit se poate schimba printr-o variabilă de mediu (vezi SPEC.md).
+
+## Teste
+
+Proiectul e dezvoltat test-first (TDD). Testele nu au nevoie de Ollama pornit:
+
+```
+pytest
+```

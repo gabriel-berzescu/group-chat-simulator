@@ -36,17 +36,20 @@ Browser (frontend) ⇄ Backend (API HTTP) ⇄ Ollama (LLM local, localhost:11434
 - **Backend:** Python + FastAPI (rulat cu uvicorn), un singur fișier de
   pornire; apelează Ollama prin API-ul HTTP local (`POST /api/chat` pe
   `localhost:11434`), cu `httpx` sau `requests`.
-- **Model:** un model mic care merge pe laptop (ex. `llama3.2:3b`) —
+- **Model:** un model mic care merge pe laptop (ex. `gemma4:e2b`) —
   configurabil printr-o variabilă de mediu.
 - **Frontend:** HTML + CSS + JavaScript vanilla, servit static de backend;
   fără framework, fără build step. Polling simplu (`GET /api/messages`)
   pentru mesaje noi — fără WebSockets în MVP.
+- **Teste:** `pytest` + `TestClient`-ul din FastAPI; dezvoltarea se face
+  test-first (vezi [PLAN.md](PLAN.md)), cu Ollama mock-uit în teste.
 - Structură sugerată:
 
 ```
 server.py        — FastAPI + endpoints + logica personajelor
 personas.py      — definițiile personajelor (nume, emoji, system prompt)
-requirements.txt — dependențe (fastapi, uvicorn, httpx)
+test_server.py   — teste (pytest)
+requirements.txt — dependențe (fastapi, uvicorn, httpx, pytest)
 static/
   index.html
   style.css
