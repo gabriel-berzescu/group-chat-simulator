@@ -71,6 +71,15 @@ def test_health_when_ollama_down(monkeypatch):
     assert response.json() == {"status": "degraded", "ollama": "down", "models": []}
 
 
+def test_personas_are_listed_without_prompt_details():
+    response = client.get("/api/personas")
+    assert response.status_code == 200
+    personas = response.json()
+    assert [p["id"] for p in personas] == ["cantaretul", "eliade", "smecherasul"]
+    for persona in personas:
+        assert set(persona) == {"id", "name", "emoji"}
+
+
 def test_messages_start_empty():
     response = client.get("/api/messages")
     assert response.status_code == 200

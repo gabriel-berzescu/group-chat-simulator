@@ -59,6 +59,14 @@ async def health():
         return {"status": "degraded", "ollama": "down", "models": []}
 
 
+@app.get("/api/personas")
+async def get_personas():
+    return [
+        {"id": p["id"], "name": p["name"], "emoji": p["emoji"]}
+        for p in PERSONAS.values()
+    ]
+
+
 @app.get("/api/messages")
 async def get_messages():
     return messages
