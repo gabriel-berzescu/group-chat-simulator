@@ -24,10 +24,10 @@ Concret pentru proiectul ăsta:
 
 ## Faza 0 — Scheletul proiectului
 
-- [ ] `requirements.txt` (fastapi, uvicorn, httpx)
-- [ ] `server.py` cu FastAPI care servește `static/` și un `GET /api/health`
+- [x] `requirements.txt` (fastapi, uvicorn, httpx)
+- [x] `server.py` cu FastAPI care servește `static/` și un `GET /api/health`
       care verifică și dacă Ollama răspunde pe `localhost:11434`
-- [ ] `static/index.html` minimal ("Group Chat Simulator")
+- [x] `static/index.html` minimal ("Group Chat Simulator")
 
 **Test:** `uvicorn server:app` pornește, pagina se încarcă, health check-ul
 spune dacă Ollama e viu. Prinde din start problemele de mediu (Ollama nepornit,
@@ -37,11 +37,11 @@ model nedescărcat).
 
 Chat funcțional cu **un singur personaj** (Cântărețul), fără automatisme:
 
-- [ ] Stocarea mesajelor în memorie (listă simplă: autor, text, timestamp)
-- [ ] `GET /api/messages` + `POST /api/messages`
-- [ ] La POST, backend-ul construiește promptul (system prompt din personaj +
+- [x] Stocarea mesajelor în memorie (listă simplă: autor, text, timestamp)
+- [x] `GET /api/messages` + `POST /api/messages`
+- [x] La POST, backend-ul construiește promptul (system prompt din personaj +
       istoricul) și cheamă Ollama sincron; răspunsul se adaugă în listă
-- [ ] UI minimal: lista de mesaje + input jos, polling la 1–2 secunde
+- [x] UI minimal: lista de mesaje + input jos, polling la 1–2 secunde
 
 **Test:** scrii "salut" în browser și primești o metaforă populară înapoi.
 Din acest punct aplicația e demo-abilă cap-coadă — tot ce urmează se adaugă
