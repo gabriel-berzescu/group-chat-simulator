@@ -32,7 +32,11 @@ Browser (frontend) ⇄ Backend (API HTTP) ⇄ Ollama (LLM local, localhost:11434
   versiune — MVP-ul va primi o orchestrare mai deșteaptă (cine și când
   răspunde) într-o fază ulterioară de implementare, de detaliat.
 - Indicator "X is typing…" cât timp backend-ul așteaptă răspunsul de la Ollama.
-- Conversația trăiește în memoria backend-ului (se pierde la restart — e OK).
+- Conversații multiple, persistate pe disc: fiecare conversație are propriul
+  fișier JSON în `conversations/`, scris după fiecare mesaj și reîncărcat la
+  pornirea serverului. Din UI poți vedea lista conversațiilor, comuta între
+  ele și începe una nouă; personajele postează automat doar în conversația
+  activă.
 
 ## Tehnologii
 
@@ -53,6 +57,7 @@ server.py        — FastAPI + endpoints + logica personajelor
 personas.json    — definițiile personajelor (nume, emoji, system prompt)
 test_server.py   — teste (pytest)
 requirements.txt — dependențe (fastapi, uvicorn, httpx, pytest)
+conversations/   — câte un fișier JSON per conversație (creat la rulare, ignorat de git)
 static/
   index.html
   style.css
@@ -61,20 +66,29 @@ static/
 
 ### API minimal
 
-- `GET  /api/messages` — toate mesajele conversației.
-- `POST /api/messages` — utilizatorul trimite un mesaj.
+- `GET  /api/conversations` — lista conversațiilor (id, data creării,
+  numărul de mesaje).
+- `POST /api/conversations` — începe o conversație nouă.
+- `GET  /api/conversations/{id}/messages` — mesajele unei conversații.
+- `POST /api/conversations/{id}/messages` — utilizatorul trimite un mesaj
+  în conversația respectivă.
 - `GET  /api/personas` — lista personajelor (pentru afișare în UI).
+
+*(În fazele timpurii, până la introducerea conversațiilor multiple,
+endpoint-urile de mesaje există în forma simplă `GET/POST /api/messages`.)*
 
 ## Ne-scopuri (deocamdată)
 
-- Fără persistență (baze de date, fișiere) și fără autentificare.
+- Fără baze de date (persistența e doar în fișiere JSON) și fără autentificare.
 - Fără WebSockets/SSE — polling e suficient.
-- Fără mai multe camere/canale sau mai mulți utilizatori simultan.
+- Fără mai mulți utilizatori simultan — un singur utilizator, o singură
+  conversație activă la un moment dat (dar poate comuta între conversații).
 
 ## Extensii posibile (v0.2+)
 
 1. Streaming al răspunsurilor (SSE/WebSockets) în loc de polling.
-2. Salvarea conversației (fișier JSON sau SQLite).
+2. Persistență în SQLite (salvarea în JSON e deja în MVP); redenumirea și
+   ștergerea conversațiilor din UI.
 3. Editor de personaje (adaugi/modifici personalități din UI).
 4. Reacții cu emoji la mesaje.
 5. Personajele își răspund unul altuia (conversație emergentă între boți).

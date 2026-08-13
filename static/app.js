@@ -2,15 +2,48 @@ const messagesList = document.getElementById("messages");
 const form = document.getElementById("chat-form");
 const input = document.getElementById("chat-input");
 const roster = document.getElementById("roster");
+const conversationSelect = document.getElementById("conversation-select");
+const newConversationButton = document.getElementById("new-conversation");
 
 let personas = {};
 let waitingForReply = false;
+let currentConversationId = null;
 
 async function loadPersonas() {
   const response = await fetch("/api/personas");
   const list = await response.json();
   personas = Object.fromEntries(list.map((p) => [p.id, p]));
   roster.textContent = list.map((p) => `${p.emoji} ${p.name}`).join(" · ");
+}
+
+function formatConversationLabel(conversation) {
+  const created = new Date(conversation.created_at);
+  return created.toLocaleString("ro-RO", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+async function loadConversations() {
+  const response = await fetch("/api/conversations");
+  const list = await response.json();
+
+  // cea mai recentă e prima; o selectăm dacă nu avem deja una validă
+  if (!list.some((c) => c.id === currentConversationId)) {
+    currentConversationId = list[0]?.id ?? null;
+  }
+
+  conversationSelect.replaceChildren(
+    ...list.map((conversation) => {
+      const option = document.createElement("option");
+      option.value = conversation.id;
+      option.textContent = formatConversationLabel(conversation);
+      return option;
+    })
+  );
+  conversationSelect.value = currentConversationId ?? "";
 }
 
 function formatTime(timestamp) {
@@ -154,8 +187,14 @@ function renderEmptyState() {
 }
 
 async function refreshMessages() {
-  const response = await fetch("/api/messages");
+  if (!currentConversationId) return;
+
+  const conversationId = currentConversationId;
+  const response = await fetch(`/api/conversations/${conversationId}/messages`);
   const messages = await response.json();
+
+  // utilizatorul a comutat conversația cât timp așteptam răspunsul
+  if (conversationId !== currentConversationId) return;
 
   const wasNearBottom =
     messagesList.scrollHeight - messagesList.scrollTop - messagesList.clientHeight < 80;
@@ -172,12 +211,12 @@ async function refreshMessages() {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = input.value.trim();
-  if (!text || waitingForReply) return;
+  if (!text || waitingForReply || !currentConversationId) return;
 
   input.value = "";
   waitingForReply = true;
   try {
-    await fetch("/api/messages", {
+    await fetch(`/api/conversations/${currentConversationId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
@@ -189,6 +228,25 @@ form.addEventListener("submit", async (event) => {
   refreshMessages();
 });
 
-loadPersonas();
-refreshMessages();
-setInterval(refreshMessages, 1500);
+conversationSelect.addEventListener("change", () => {
+  currentConversationId = conversationSelect.value;
+  refreshMessages();
+});
+
+newConversationButton.addEventListener("click", async () => {
+  const response = await fetch("/api/conversations", { method: "POST" });
+  const created = await response.json();
+  currentConversationId = created.id;
+  await loadConversations();
+  refreshMessages();
+  input.focus();
+});
+
+async function init() {
+  loadPersonas();
+  await loadConversations();
+  refreshMessages();
+  setInterval(refreshMessages, 1500);
+}
+
+init();

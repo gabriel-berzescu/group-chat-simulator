@@ -5,12 +5,13 @@ from datetime import datetime
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 OLLAMA_URL = "http://localhost:11434"
 OLLAMA_MODEL = "gemma4:e2b"
+CONVERSATIONS_DIR = Path(__file__).parent / "conversations"
 
 PERSONAS = {
     p["id"]: p
@@ -19,14 +20,69 @@ PERSONAS = {
     )["personas"]
 }
 
-# Istoricul conversației, în memorie: {author, text, timestamp}
-messages: list[dict] = []
+# Conversațiile, în memorie: {id: {id, created_at, messages: [{author, text, timestamp}]}}
+# Fiecare conversație se oglindește într-un fișier JSON din CONVERSATIONS_DIR.
+conversations: dict[str, dict] = {}
 
 app = FastAPI(title="Group Chat Simulator")
 
 
 class MessageIn(BaseModel):
     text: str
+
+
+def new_conversation() -> dict:
+    now = datetime.now()
+    conversation_id = now.strftime("%Y-%m-%dT%H-%M-%S")
+    suffix = 2
+    while conversation_id in conversations:
+        conversation_id = f"{now.strftime('%Y-%m-%dT%H-%M-%S')}-{suffix}"
+        suffix += 1
+    conversation = {
+        "id": conversation_id,
+        "created_at": now.isoformat(timespec="seconds"),
+        "messages": [],
+    }
+    conversations[conversation_id] = conversation
+    return conversation
+
+
+def load_conversations() -> None:
+    """Încarcă toate conversațiile de pe disc; dacă nu există niciuna, începe una nouă.
+
+    Conversațiile goale nu au încă fișier (se scrie la primul mesaj), deci un
+    server proaspăt nu lasă nimic pe disc până nu se scrie ceva în chat.
+    """
+    conversations.clear()
+    if CONVERSATIONS_DIR.is_dir():
+        for path in sorted(CONVERSATIONS_DIR.glob("*.json")):
+            conversation = json.loads(path.read_text(encoding="utf-8"))
+            conversations[conversation["id"]] = conversation
+    if not conversations:
+        new_conversation()
+
+
+def save_conversation(conversation: dict) -> None:
+    CONVERSATIONS_DIR.mkdir(exist_ok=True)
+    path = CONVERSATIONS_DIR / f"{conversation['id']}.json"
+    path.write_text(
+        json.dumps(conversation, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def conversation_summary(conversation: dict) -> dict:
+    return {
+        "id": conversation["id"],
+        "created_at": conversation["created_at"],
+        "message_count": len(conversation["messages"]),
+    }
+
+
+def get_conversation_or_404(conversation_id: str) -> dict:
+    conversation = conversations.get(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversația nu există")
+    return conversation
 
 
 def _normalize(text: str) -> str:
@@ -88,13 +144,32 @@ async def get_personas():
     ]
 
 
-@app.get("/api/messages")
-async def get_messages():
-    return messages
+@app.get("/api/conversations")
+async def get_conversations():
+    return [
+        conversation_summary(c)
+        for c in sorted(
+            conversations.values(),
+            key=lambda c: (c["created_at"], c["id"]),
+            reverse=True,
+        )
+    ]
 
 
-@app.post("/api/messages", status_code=201)
-async def post_message(message: MessageIn):
+@app.post("/api/conversations", status_code=201)
+async def post_conversation():
+    return conversation_summary(new_conversation())
+
+
+@app.get("/api/conversations/{conversation_id}/messages")
+async def get_messages(conversation_id: str):
+    return get_conversation_or_404(conversation_id)["messages"]
+
+
+@app.post("/api/conversations/{conversation_id}/messages", status_code=201)
+async def post_message(conversation_id: str, message: MessageIn):
+    conversation = get_conversation_or_404(conversation_id)
+    messages = conversation["messages"]
     messages.append(
         {
             "author": "user",
@@ -102,6 +177,7 @@ async def post_message(message: MessageIn):
             "timestamp": datetime.now().isoformat(timespec="seconds"),
         }
     )
+    save_conversation(conversation)
     respondents = mentioned_personas(message.text) or list(PERSONAS.values())
     replies = []
     for persona in respondents:
@@ -113,7 +189,10 @@ async def post_message(message: MessageIn):
         }
         messages.append(reply)
         replies.append(reply)
+        save_conversation(conversation)
     return replies
 
+
+load_conversations()
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

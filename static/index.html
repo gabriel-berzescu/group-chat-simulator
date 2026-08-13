@@ -76,6 +76,49 @@
       margin: 0;
     }
 
+    header .header-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .conversation-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #conversation-select {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      max-width: 170px;
+      outline: none;
+    }
+
+    #conversation-select:focus {
+      border-color: var(--accent);
+    }
+
+    #new-conversation {
+      width: 34px;
+      height: 34px;
+      flex-shrink: 0;
+      border: none;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      color: #fff;
+      font-size: 19px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    #new-conversation:hover {
+      filter: brightness(1.08);
+    }
+
     header .subtitle {
       font-size: 12.5px;
       color: var(--text-muted);
@@ -294,9 +337,13 @@
   <div class="chat">
     <header>
       <div class="logo">💬</div>
-      <div>
+      <div class="header-text">
         <h1>Group Chat Simulator</h1>
         <div class="subtitle" id="roster">Se încarcă personajele…</div>
+      </div>
+      <div class="conversation-controls">
+        <select id="conversation-select" title="Alege conversația"></select>
+        <button id="new-conversation" type="button" title="Conversație nouă">+</button>
       </div>
     </header>
     <ul id="messages"></ul>

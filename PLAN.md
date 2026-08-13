@@ -62,6 +62,49 @@ pe o fundație care merge.
 **Test:** un mesaj cu `@personaj` primește răspuns doar de la cel menționat;
 un mesaj fără mențiuni primește răspuns de la toate trei, fiecare cu vocea lui.
 
+## Faza 2b — Conversații multiple, persistate în JSON
+
+Mesajele nu se mai pierd la restart: fiecare conversație se salvează într-un
+fișier JSON propriu, iar din UI poți vedea toate conversațiile, comuta între
+ele și începe una nouă.
+
+**Backend:**
+
+- [x] Directorul `conversations/` (creat automat, ignorat de git) în care
+      fiecare conversație are propriul fișier, ex.
+      `conversations/2026-08-13T10-30-00.json`
+- [x] Formatul fișierului: un obiect JSON cu id-ul conversației, data creării
+      și lista de mesaje (autor, text, timestamp)
+- [x] La pornirea serverului se încarcă toate conversațiile existente de pe
+      disc; dacă nu există niciuna, se creează una nouă
+- [x] `GET /api/conversations` — lista conversațiilor (id, data creării,
+      numărul de mesaje), sortată descrescător după creare
+- [x] `POST /api/conversations` — creează o conversație nouă (goală) și
+      întoarce id-ul ei
+- [x] Mesajele devin per-conversație:
+      `GET/POST /api/conversations/{id}/messages` înlocuiesc
+      `GET/POST /api/messages` (istoricul trimis la Ollama e cel al
+      conversației respective)
+- [x] După fiecare mesaj adăugat (al utilizatorului sau al unui personaj),
+      conversația respectivă se rescrie în fișierul ei
+
+**UI:**
+
+- [x] Listă de conversații (dropdown în header) cu buton „Conversație nouă"
+- [x] Click pe o conversație o încarcă în fereastra de chat; polling-ul de
+      mesaje se face pe conversația selectată
+- [x] La încărcarea paginii se deschide cea mai recentă conversație
+
+În teste directorul de conversații se configurează (ex. prin `tmp_path` din
+pytest), ca testele să nu scrie în directorul real.
+
+*Notă pentru Faza 3:* personajele vor posta automat doar în conversația
+activă (cea mai recent folosită), nu în toate.
+
+**Test:** porți o conversație, repornești serverul și o regăsești întreagă în
+UI; creezi o conversație nouă, scrii în ea, apoi comuți înapoi la cea veche și
+ambele își păstrează mesajele (și fișierele JSON aferente pe disc).
+
 ## Faza 3 — Chatul "viu"
 
 - [ ] Task de fundal (asyncio) în care personajele postează singure la
@@ -93,5 +136,6 @@ că în Faza 1 răspunsul e sincron și indicatorul n-ar avea încă ce arăta.
 1. Personajele își răspund unul altuia (conversație emergentă) — cel mai
    spectaculos vizual
 2. Streaming (SSE) în loc de polling
-3. Persistență în JSON/SQLite
+3. Persistență în SQLite (JSON-ul e acoperit de Faza 2b); redenumirea și
+   ștergerea conversațiilor din UI
 4. Editor de personaje din UI
