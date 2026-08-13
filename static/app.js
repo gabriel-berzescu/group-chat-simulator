@@ -13,7 +13,14 @@ async function loadPersonas() {
   const response = await fetch("/api/personas");
   const list = await response.json();
   personas = Object.fromEntries(list.map((p) => [p.id, p]));
-  roster.textContent = list.map((p) => `${p.emoji} ${p.name}`).join(" · ");
+  roster.replaceChildren(
+    ...list.flatMap((p, i) => {
+      const span = document.createElement("span");
+      span.textContent = `${p.emoji} ${p.name}`;
+      if (p.color) span.style.color = p.color;
+      return i ? [document.createTextNode(" · "), span] : [span];
+    })
+  );
 }
 
 function formatConversationLabel(conversation) {
@@ -134,20 +141,27 @@ function renderMessage(message) {
   const item = document.createElement("li");
   item.className = `message ${isMine ? "mine" : "theirs"}`;
 
+  const color = persona?.color;
+
   if (!isMine) {
     const avatar = document.createElement("span");
     avatar.className = "avatar";
     avatar.textContent = persona?.emoji ?? "🤖";
+    if (color) avatar.style.borderColor = color;
     item.appendChild(avatar);
   }
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
+  if (!isMine && color) {
+    bubble.style.background = `color-mix(in srgb, ${color} 10%, var(--bubble-theirs))`;
+  }
 
   if (!isMine) {
     const author = document.createElement("span");
     author.className = "author";
     author.textContent = persona?.name ?? message.author;
+    if (color) author.style.color = color;
     bubble.appendChild(author);
   }
 

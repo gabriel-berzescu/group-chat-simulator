@@ -24,7 +24,7 @@ Concret pentru proiectul ăsta:
 
 ## Faza 0 — Scheletul proiectului
 
-- [x] `requirements.txt` (fastapi, uvicorn, httpx)
+- [x] `requirements.txt` (fastapi, uvicorn, httpx, pytest)
 - [x] `server.py` cu FastAPI care servește `static/` și un `GET /api/health`
       care verifică și dacă Ollama răspunde pe `localhost:11434`
 - [x] `static/index.html` minimal ("Group Chat Simulator")
@@ -111,8 +111,10 @@ ambele își păstrează mesajele (și fișierele JSON aferente pe disc).
       intervale aleatorii. În timpul dezvoltării: 10–30 secunde, configurabil;
       default-ul "de producție" rămâne 2–8 minute, ca în spec.
 - [ ] Indicatorul "X is typing…": un flag pe backend expus prin
-      `GET /api/messages` (sau un endpoint separat), afișat de UI cât timp
-      se așteaptă Ollama
+      `GET /api/conversations/{id}/messages` (sau un endpoint separat),
+      afișat de UI cât timp se așteaptă Ollama. (UI-ul are deja un indicator
+      local cât așteaptă POST-ul utilizatorului; flag-ul pe backend e necesar
+      pentru mesajele postate automat.)
 
 **Test:** lași pagina deschisă și personajele încep să vorbească singure.
 

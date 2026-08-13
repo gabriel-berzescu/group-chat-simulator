@@ -7,7 +7,9 @@ niciun API extern.
 
 Proiect făcut la un curs de vibe coding. Spec-ul complet e în [SPEC.md](SPEC.md).
 
-> **Status:** în lucru — deocamdată există spec-ul și personajele, aplicația urmează.
+> **Status:** în lucru — chatul funcționează: mesaje cu mențiuni `@`, cele 3
+> personaje, conversații multiple persistate pe disc. Urmează postarea automată
+> a personajelor și finisajele (Fazele 3–4 din [PLAN.md](PLAN.md)).
 
 ## Personajele
 
@@ -26,10 +28,12 @@ Definițiile (system prompt + temperature) sunt în fișierul de configurare
 Browser (frontend) ⇄ Backend FastAPI ⇄ Ollama (LLM local)
 ```
 
-Backend-ul ține conversația în memorie, construiește prompt-ul fiecărui
-personaj și cheamă Ollama pentru fiecare replică. Personajele postează singure
-la intervale aleatorii, iar când scrii tu ceva, îți răspund imediat personajele
-pe care le menționezi cu `@` — sau toate, dacă nu menționezi pe nimeni.
+Backend-ul ține conversațiile în memorie și le salvează pe disc (câte un
+fișier JSON per conversație, în `conversations/`), construiește prompt-ul
+fiecărui personaj și cheamă Ollama pentru fiecare replică. Când scrii ceva,
+îți răspund imediat personajele pe care le menționezi cu `@` — sau toate,
+dacă nu menționezi pe nimeni. Din UI poți comuta între conversații sau începe
+una nouă. Postarea automată la intervale aleatorii vine în Faza 3.
 
 ## Cerințe
 
@@ -52,7 +56,8 @@ uvicorn server:app
 
 Apoi deschide http://localhost:8000 în browser și intră în vorbă.
 
-Modelul folosit se poate schimba printr-o variabilă de mediu (vezi SPEC.md).
+Modelul e deocamdată fixat în `server.py` (`gemma4:e2b`); configurarea printr-o
+variabilă de mediu (`OLLAMA_MODEL`) vine în Faza 4 (vezi PLAN.md).
 
 ## Teste
 

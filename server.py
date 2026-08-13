@@ -139,7 +139,7 @@ async def health():
 @app.get("/api/personas")
 async def get_personas():
     return [
-        {"id": p["id"], "name": p["name"], "emoji": p["emoji"]}
+        {"id": p["id"], "name": p["name"], "emoji": p["emoji"], "color": p["color"]}
         for p in PERSONAS.values()
     ]
 

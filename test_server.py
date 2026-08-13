@@ -86,7 +86,7 @@ def test_personas_are_listed_without_prompt_details():
     personas = response.json()
     assert [p["id"] for p in personas] == ["cantaretul", "eliade", "smecherasul"]
     for persona in personas:
-        assert set(persona) == {"id", "name", "emoji"}
+        assert set(persona) == {"id", "name", "emoji", "color"}
 
 
 # --- Conversații (Faza 2b) ---

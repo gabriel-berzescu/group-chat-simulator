@@ -46,21 +46,21 @@ Browser (frontend) ⇄ Backend (API HTTP) ⇄ Ollama (LLM local, localhost:11434
 - **Model:** un model mic care merge pe laptop (ex. `gemma4:e2b`) —
   configurabil printr-o variabilă de mediu.
 - **Frontend:** HTML + CSS + JavaScript vanilla, servit static de backend;
-  fără framework, fără build step. Polling simplu (`GET /api/messages`)
-  pentru mesaje noi — fără WebSockets în MVP.
+  fără framework, fără build step. Polling simplu
+  (`GET /api/conversations/{id}/messages`) pentru mesaje noi — fără
+  WebSockets în MVP.
 - **Teste:** `pytest` + `TestClient`-ul din FastAPI; dezvoltarea se face
   test-first (vezi [PLAN.md](PLAN.md)), cu Ollama mock-uit în teste.
 - Structură sugerată:
 
 ```
 server.py        — FastAPI + endpoints + logica personajelor
-personas.json    — definițiile personajelor (nume, emoji, system prompt)
+personas.json    — definițiile personajelor (nume, emoji, system prompt, temperature)
 test_server.py   — teste (pytest)
 requirements.txt — dependențe (fastapi, uvicorn, httpx, pytest)
 conversations/   — câte un fișier JSON per conversație (creat la rulare, ignorat de git)
 static/
-  index.html
-  style.css
+  index.html     — pagina (CSS-ul stă inline aici, nu în fișier separat)
   app.js
 ```
 
