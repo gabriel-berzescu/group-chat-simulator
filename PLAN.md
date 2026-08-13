@@ -49,11 +49,11 @@ pe o fundație care merge.
 
 ## Faza 2 — Cele 3 personaje
 
-- [ ] Personajele se citesc din fișierul de configurare `personas.json`
+- [x] Personajele se citesc din fișierul de configurare `personas.json`
       (nume, emoji, system prompt, temperature pentru fiecare)
-- [ ] `GET /api/personas` și afișarea numelui + emoji-ului lângă fiecare
+- [x] `GET /api/personas` și afișarea numelui + emoji-ului lângă fiecare
       mesaj în UI
-- [ ] Logica de alegere: dacă utilizatorul menționează personaje cu `@`
+- [x] Logica de alegere: dacă utilizatorul menționează personaje cu `@`
       (ex. `@Șmecherașul`), răspund doar cele menționate; dacă mesajul nu
       conține nicio mențiune, răspund toate personajele. *Regulă provizorie,
       doar pentru faza asta — o orchestrare mai deșteaptă vine într-o fază

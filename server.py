@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +27,25 @@ app = FastAPI(title="Group Chat Simulator")
 
 class MessageIn(BaseModel):
     text: str
+
+
+def _normalize(text: str) -> str:
+    decomposed = unicodedata.normalize("NFD", text.lower())
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
+def mentioned_personas(text: str) -> list[dict]:
+    """Personajele menționate cu @ în text, în ordinea din personas.json.
+
+    O mențiune se potrivește după id sau după oricare cuvânt din nume,
+    ignorând diacriticele și majusculele. Regulă provizorie (vezi PLAN.md).
+    """
+    tokens = {_normalize(t) for t in re.findall(r"@(\w+)", text)}
+    return [
+        p
+        for p in PERSONAS.values()
+        if tokens & ({p["id"]} | set(_normalize(p["name"]).split()))
+    ]
 
 
 async def ask_ollama(persona: dict, history: list[dict]) -> str:
@@ -81,15 +102,18 @@ async def post_message(message: MessageIn):
             "timestamp": datetime.now().isoformat(timespec="seconds"),
         }
     )
-    persona = PERSONAS["cantaretul"]
-    reply_text = await ask_ollama(persona, messages)
-    reply = {
-        "author": persona["id"],
-        "text": reply_text,
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-    }
-    messages.append(reply)
-    return reply
+    respondents = mentioned_personas(message.text) or list(PERSONAS.values())
+    replies = []
+    for persona in respondents:
+        reply_text = await ask_ollama(persona, messages)
+        reply = {
+            "author": persona["id"],
+            "text": reply_text,
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+        }
+        messages.append(reply)
+        replies.append(reply)
+    return replies
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

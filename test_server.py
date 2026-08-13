@@ -86,26 +86,88 @@ def test_messages_start_empty():
     assert response.json() == []
 
 
-def test_post_message_gets_reply_from_cantaretul(monkeypatch):
+def test_message_without_mention_gets_replies_from_all_personas(monkeypatch):
+    calls = []
+
     async def fake_ask_ollama(persona, history):
-        assert persona["id"] == "cantaretul"
-        assert history[-1]["author"] == "user"
-        assert history[-1]["text"] == "salut"
-        return "Viața e ca o doină cântată la nedeie, măi frate!"
+        calls.append((persona["id"], [m["author"] for m in history]))
+        return f"replică de la {persona['id']}"
 
     monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
 
-    response = client.post("/api/messages", json={"text": "salut"})
+    response = client.post("/api/messages", json={"text": "salut tuturor"})
     assert response.status_code == 201
-    reply = response.json()
-    assert reply["author"] == "cantaretul"
-    assert reply["text"] == "Viața e ca o doină cântată la nedeie, măi frate!"
-    assert "timestamp" in reply
+    replies = response.json()
+    assert [r["author"] for r in replies] == ["cantaretul", "eliade", "smecherasul"]
+    assert replies[0]["text"] == "replică de la cantaretul"
+    assert all("timestamp" in r for r in replies)
+
+    # fiecare personaj vede în istoric replicile celor care au răspuns înaintea lui
+    assert [history for _, history in calls] == [
+        ["user"],
+        ["user", "cantaretul"],
+        ["user", "cantaretul", "eliade"],
+    ]
 
     messages = client.get("/api/messages").json()
-    assert [m["author"] for m in messages] == ["user", "cantaretul"]
-    assert messages[0]["text"] == "salut"
-    assert all("timestamp" in m for m in messages)
+    assert [m["author"] for m in messages] == [
+        "user",
+        "cantaretul",
+        "eliade",
+        "smecherasul",
+    ]
+    assert messages[0]["text"] == "salut tuturor"
+
+
+def test_mentioned_persona_is_the_only_one_replying(monkeypatch):
+    async def fake_ask_ollama(persona, history):
+        return "sacrul se ascunde în profan"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+
+    response = client.post("/api/messages", json={"text": "@eliade ce părere ai?"})
+    assert response.status_code == 201
+    assert [r["author"] for r in response.json()] == ["eliade"]
+
+    messages = client.get("/api/messages").json()
+    assert [m["author"] for m in messages] == ["user", "eliade"]
+
+
+def test_mentions_match_display_names_ignoring_diacritics(monkeypatch):
+    async def fake_ask_ollama(persona, history):
+        return f"replică de la {persona['id']}"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+
+    response = client.post(
+        "/api/messages",
+        json={"text": "@Șmecherașul și @Cantaretul, voi ce ziceți?"},
+    )
+    assert [r["author"] for r in response.json()] == ["cantaretul", "smecherasul"]
+
+
+def test_mention_by_name_word_matches_persona(monkeypatch):
+    async def fake_ask_ollama(persona, history):
+        return "hermeneutică"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+
+    response = client.post("/api/messages", json={"text": "@Mircea, tu ce crezi?"})
+    assert [r["author"] for r in response.json()] == ["eliade"]
+
+
+def test_unknown_mention_counts_as_no_mention(monkeypatch):
+    async def fake_ask_ollama(persona, history):
+        return f"replică de la {persona['id']}"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+
+    response = client.post("/api/messages", json={"text": "@necunoscut salut"})
+    assert [r["author"] for r in response.json()] == [
+        "cantaretul",
+        "eliade",
+        "smecherasul",
+    ]
 
 
 def test_ask_ollama_builds_chat_request(monkeypatch):
