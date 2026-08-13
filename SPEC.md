@@ -26,8 +26,11 @@ Browser (frontend) ⇄ Backend (API HTTP) ⇄ Ollama (LLM local, localhost:11434
   ca system prompt-uri pe backend.
 - Personajele trimit mesaje automat, la intervale aleatorii (2–8 minute),
   generate de Ollama pe baza personalității și a istoricului conversației.
-- Când utilizatorul scrie un mesaj, backend-ul alege un personaj care îi
-  răspunde (imediat, nu la intervalul lung).
+- Când utilizatorul scrie un mesaj, îi răspund (imediat, nu la intervalul
+  lung) personajele menționate cu `@` (ex. `@Șmecherașul`); dacă mesajul nu
+  conține nicio mențiune, răspund toate personajele. Regula asta e o primă
+  versiune — MVP-ul va primi o orchestrare mai deșteaptă (cine și când
+  răspunde) într-o fază ulterioară de implementare, de detaliat.
 - Indicator "X is typing…" cât timp backend-ul așteaptă răspunsul de la Ollama.
 - Conversația trăiește în memoria backend-ului (se pierde la restart — e OK).
 
@@ -47,7 +50,7 @@ Browser (frontend) ⇄ Backend (API HTTP) ⇄ Ollama (LLM local, localhost:11434
 
 ```
 server.py        — FastAPI + endpoints + logica personajelor
-personas.py      — definițiile personajelor (nume, emoji, system prompt)
+personas.json    — definițiile personajelor (nume, emoji, system prompt)
 test_server.py   — teste (pytest)
 requirements.txt — dependențe (fastapi, uvicorn, httpx, pytest)
 static/

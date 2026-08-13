@@ -17,7 +17,8 @@ Proiect făcut la un curs de vibe coding. Spec-ul complet e în [SPEC.md](SPEC.m
 | 📚 Mircea Eliade | Istoricul religiilor, în persoană |
 | 😎 Șmecherașul | Vrea să câștige și el ceva din orice conversație |
 
-Definițiile (system prompt + temperature) sunt în `personaj1.md`–`personaj3.md`.
+Definițiile (system prompt + temperature) sunt în fișierul de configurare
+`personas.json`.
 
 ## Cum funcționează
 
@@ -27,8 +28,8 @@ Browser (frontend) ⇄ Backend FastAPI ⇄ Ollama (LLM local)
 
 Backend-ul ține conversația în memorie, construiește prompt-ul fiecărui
 personaj și cheamă Ollama pentru fiecare replică. Personajele postează singure
-la intervale aleatorii, iar când scrii tu ceva, unul dintre ele îți răspunde
-imediat.
+la intervale aleatorii, iar când scrii tu ceva, îți răspund imediat personajele
+pe care le menționezi cu `@` — sau toate, dacă nu menționezi pe nimeni.
 
 ## Cerințe
 

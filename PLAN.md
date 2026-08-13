@@ -49,14 +49,18 @@ pe o fundație care merge.
 
 ## Faza 2 — Cele 3 personaje
 
-- [ ] `personas.py` cu definițiile din `personaj1–3.md` (nume, emoji,
-      system prompt, temperature)
+- [ ] Personajele se citesc din fișierul de configurare `personas.json`
+      (nume, emoji, system prompt, temperature pentru fiecare)
 - [ ] `GET /api/personas` și afișarea numelui + emoji-ului lângă fiecare
       mesaj în UI
-- [ ] Logica de alegere: cine răspunde utilizatorului (aleator e suficient
-      pentru MVP, eventual cu regula "nu același personaj de două ori la rând")
+- [ ] Logica de alegere: dacă utilizatorul menționează personaje cu `@`
+      (ex. `@Șmecherașul`), răspund doar cele menționate; dacă mesajul nu
+      conține nicio mențiune, răspund toate personajele. *Regulă provizorie,
+      doar pentru faza asta — o orchestrare mai deșteaptă vine într-o fază
+      ulterioară, tot în MVP (de detaliat).*
 
-**Test:** răspund personaje diferite, fiecare cu vocea lui.
+**Test:** un mesaj cu `@personaj` primește răspuns doar de la cel menționat;
+un mesaj fără mențiuni primește răspuns de la toate trei, fiecare cu vocea lui.
 
 ## Faza 3 — Chatul "viu"
 
