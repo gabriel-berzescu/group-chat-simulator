@@ -9,6 +9,8 @@ import server
 
 client = TestClient(server.app)
 
+ALL_PERSONA_IDS = list(server.PERSONAS)
+
 
 @pytest.fixture(autouse=True)
 def isolated_conversations(tmp_path, monkeypatch):
@@ -84,7 +86,7 @@ def test_personas_are_listed_without_prompt_details():
     response = client.get("/api/personas")
     assert response.status_code == 200
     personas = response.json()
-    assert [p["id"] for p in personas] == ["cantaretul", "eliade", "smecherasul"]
+    assert [p["id"] for p in personas] == ALL_PERSONA_IDS
     for persona in personas:
         assert set(persona) == {"id", "name", "emoji", "color"}
 
@@ -160,12 +162,7 @@ def test_posted_messages_are_saved_to_the_conversation_file(tmp_path, monkeypatc
     )
     assert saved["id"] == conversation_id
     assert "created_at" in saved
-    assert [m["author"] for m in saved["messages"]] == [
-        "user",
-        "cantaretul",
-        "eliade",
-        "smecherasul",
-    ]
+    assert [m["author"] for m in saved["messages"]] == ["user", *ALL_PERSONA_IDS]
     assert saved["messages"][0]["text"] == "salut"
 
 
@@ -244,24 +241,17 @@ def test_message_without_mention_gets_replies_from_all_personas(monkeypatch):
     )
     assert response.status_code == 201
     replies = response.json()
-    assert [r["author"] for r in replies] == ["cantaretul", "eliade", "smecherasul"]
-    assert replies[0]["text"] == "replică de la cantaretul"
+    assert [r["author"] for r in replies] == ALL_PERSONA_IDS
+    assert replies[0]["text"] == f"replică de la {ALL_PERSONA_IDS[0]}"
     assert all("timestamp" in r for r in replies)
 
     # fiecare personaj vede în istoric replicile celor care au răspuns înaintea lui
     assert [history for _, history in calls] == [
-        ["user"],
-        ["user", "cantaretul"],
-        ["user", "cantaretul", "eliade"],
+        ["user", *ALL_PERSONA_IDS[:i]] for i in range(len(ALL_PERSONA_IDS))
     ]
 
     messages = client.get(f"/api/conversations/{conversation_id}/messages").json()
-    assert [m["author"] for m in messages] == [
-        "user",
-        "cantaretul",
-        "eliade",
-        "smecherasul",
-    ]
+    assert [m["author"] for m in messages] == ["user", *ALL_PERSONA_IDS]
     assert messages[0]["text"] == "salut tuturor"
 
 
@@ -319,11 +309,7 @@ def test_unknown_mention_counts_as_no_mention(monkeypatch):
         f"/api/conversations/{newest_conversation_id()}/messages",
         json={"text": "@necunoscut salut"},
     )
-    assert [r["author"] for r in response.json()] == [
-        "cantaretul",
-        "eliade",
-        "smecherasul",
-    ]
+    assert [r["author"] for r in response.json()] == ALL_PERSONA_IDS
 
 
 def test_ask_ollama_builds_chat_request(monkeypatch):

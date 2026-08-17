@@ -7,7 +7,7 @@ niciun API extern.
 
 Proiect făcut la un curs de vibe coding. Spec-ul complet e în [SPEC.md](SPEC.md).
 
-> **Status:** în lucru — chatul funcționează: mesaje cu mențiuni `@`, cele 3
+> **Status:** în lucru — chatul funcționează: mesaje cu mențiuni `@`, cele 9
 > personaje, conversații multiple persistate pe disc. Urmează postarea automată
 > a personajelor și finisajele (Fazele 3–4 din [PLAN.md](PLAN.md)).
 
@@ -18,6 +18,12 @@ Proiect făcut la un curs de vibe coding. Spec-ul complet e în [SPEC.md](SPEC.m
 | 🎤 Cântărețul de muzică populară | Haios, jovial, vorbește în metafore |
 | 📚 Mircea Eliade | Istoricul religiilor, în persoană |
 | 😎 Șmecherașul | Vrea să câștige și el ceva din orice conversație |
+| 🎭 I.L. Caragiale | Ironic, spiritual, vede ridicolul din orice situație |
+| 🧶 Bunica de la țară | Caldă, grijulie, dă sfaturi din bătrâni și vrea să hrănească pe toată lumea |
+| 🚕 Taximetristul | Vorbăreț, are o părere despre orice, toate poveștile încep cu un client |
+| 🤳 Influencerița | Multe englezisme, totul e „super cute", strecoară coduri de reducere |
+| 💼 Corporatistul | Jargon de birou, mereu ocupat și obosit, se laudă cu team building-urile |
+| 🧛 Contele Dracula | Teatral, aristocrat, se plânge de vremurile moderne |
 
 Definițiile (system prompt + temperature) sunt în fișierul de configurare
 `personas.json`.
