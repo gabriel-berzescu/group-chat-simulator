@@ -183,12 +183,16 @@ function renderMessage(message) {
   return item;
 }
 
-function renderTypingIndicator() {
+function renderTypingIndicator(personaId) {
+  const persona = personas[personaId];
   const item = document.createElement("li");
   item.className = "message theirs typing";
   item.innerHTML =
-    '<span class="avatar">🤖</span>' +
+    '<span class="avatar"></span>' +
     '<div class="bubble"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
+  const avatar = item.querySelector(".avatar");
+  avatar.textContent = persona?.emoji ?? "🤖";
+  if (persona?.color) avatar.style.borderColor = persona.color;
   return item;
 }
 
@@ -205,7 +209,7 @@ async function refreshMessages() {
 
   const conversationId = currentConversationId;
   const response = await fetch(`/api/conversations/${conversationId}/messages`);
-  const messages = await response.json();
+  const { messages, typing } = await response.json();
 
   // utilizatorul a comutat conversația cât timp așteptam răspunsul
   if (conversationId !== currentConversationId) return;
@@ -214,7 +218,9 @@ async function refreshMessages() {
     messagesList.scrollHeight - messagesList.scrollTop - messagesList.clientHeight < 80;
 
   const items = messages.length ? messages.map(renderMessage) : [renderEmptyState()];
-  if (waitingForReply) items.push(renderTypingIndicator());
+  // backend-ul știe cine scrie (inclusiv la postările automate); până află
+  // polling-ul, arătăm indicatorul generic cât așteptăm propriul POST
+  if (typing || waitingForReply) items.push(renderTypingIndicator(typing));
   messagesList.replaceChildren(...items);
 
   if (wasNearBottom) {

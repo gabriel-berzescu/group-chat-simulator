@@ -1,7 +1,11 @@
+import asyncio
 import json
+import logging
+import os
 import random
 import re
 import unicodedata
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -14,18 +18,49 @@ OLLAMA_URL = "http://localhost:11434"
 OLLAMA_MODEL = "gemma4:e2b"
 CONVERSATIONS_DIR = Path(__file__).parent / "conversations"
 
-PERSONAS = {
-    p["id"]: p
-    for p in json.loads(
-        (Path(__file__).parent / "personas.json").read_text(encoding="utf-8")
-    )["personas"]
-}
+# Intervalul (aleator) dintre postările automate ale personajelor.
+# Default-ul „de producție" e 2–8 minute; în dezvoltare setează ex. 10/30.
+AUTO_POST_MIN_SECONDS = float(os.environ.get("AUTO_POST_MIN_SECONDS", "120"))
+AUTO_POST_MAX_SECONDS = float(os.environ.get("AUTO_POST_MAX_SECONDS", "480"))
+
+_personas_config = json.loads(
+    (Path(__file__).parent / "personas.json").read_text(encoding="utf-8")
+)
+PERSONAS = {p["id"]: p for p in _personas_config["personas"]}
+# Instrucțiuni comune, adăugate la promptul fiecărui personaj; {participants}
+# se înlocuiește cu lista celorlalți, ca să știe pe cine pot chema cu @.
+SHARED_SYSTEM_PROMPT = _personas_config["shared_system_prompt"]
 
 # Conversațiile, în memorie: {id: {id, created_at, messages: [{author, text, timestamp}]}}
 # Fiecare conversație se oglindește într-un fișier JSON din CONVERSATIONS_DIR.
 conversations: dict[str, dict] = {}
 
-app = FastAPI(title="Group Chat Simulator")
+# Conversația „activă" — cea mai recent folosită (creată, citită sau scrisă);
+# doar în ea postează personajele automat.
+active_conversation_id: str | None = None
+
+# Cine „scrie" acum, cât se așteaptă Ollama: {conversation_id: persona_id}
+typing: dict[str, str] = {}
+
+
+async def auto_post_loop() -> None:
+    while True:
+        await asyncio.sleep(auto_post_delay())
+        try:
+            await auto_post_once()
+        except Exception:
+            # Ollama căzut etc. — nu omorâm task-ul, reîncercăm la următorul interval
+            logging.getLogger("uvicorn.error").exception("Postarea automată a eșuat")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(auto_post_loop())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="Group Chat Simulator", lifespan=lifespan)
 
 
 class MessageIn(BaseModel):
@@ -33,6 +68,7 @@ class MessageIn(BaseModel):
 
 
 def new_conversation() -> dict:
+    global active_conversation_id
     now = datetime.now()
     conversation_id = now.strftime("%Y-%m-%dT%H-%M-%S")
     suffix = 2
@@ -45,6 +81,7 @@ def new_conversation() -> dict:
         "messages": [],
     }
     conversations[conversation_id] = conversation
+    active_conversation_id = conversation_id
     return conversation
 
 
@@ -54,13 +91,18 @@ def load_conversations() -> None:
     Conversațiile goale nu au încă fișier (se scrie la primul mesaj), deci un
     server proaspăt nu lasă nimic pe disc până nu se scrie ceva în chat.
     """
+    global active_conversation_id
     conversations.clear()
+    typing.clear()
     if CONVERSATIONS_DIR.is_dir():
         for path in sorted(CONVERSATIONS_DIR.glob("*.json")):
             conversation = json.loads(path.read_text(encoding="utf-8"))
             conversations[conversation["id"]] = conversation
     if not conversations:
         new_conversation()
+    active_conversation_id = max(
+        conversations.values(), key=lambda c: (c["created_at"], c["id"])
+    )["id"]
 
 
 def save_conversation(conversation: dict) -> None:
@@ -145,11 +187,37 @@ def choose_respondent(messages: list[dict]) -> dict:
     return PERSONAS[winner]
 
 
+def system_prompt_for(persona: dict) -> str:
+    """Promptul propriu al personajului + instrucțiunile comune, cu lista
+    celorlalți participanți și handle-urile lor de @."""
+    participants = ", ".join(
+        f"{p['name']} (@{p['id']})"
+        for p in PERSONAS.values()
+        if p["id"] != persona["id"]
+    )
+    return (
+        f"{persona['system_prompt']}\n\n"
+        f"{SHARED_SYSTEM_PROMPT.format(participants=participants)}"
+    )
+
+
 async def ask_ollama(persona: dict, history: list[dict]) -> str:
-    chat_messages = [{"role": "system", "content": persona["system_prompt"]}]
+    """Cere o replică de la Ollama, în numele personajului dat.
+
+    Mesajele celorlalți (rol „user") sunt prefixate cu numele autorului,
+    altfel modelul nu are cum să știe cine ce a spus și atribuie greșit
+    replicile (verificat empiric în experiments/).
+    """
+    chat_messages = [{"role": "system", "content": system_prompt_for(persona)}]
     for message in history:
-        role = "assistant" if message["author"] == persona["id"] else "user"
-        chat_messages.append({"role": role, "content": message["text"]})
+        if message["author"] == persona["id"]:
+            chat_messages.append({"role": "assistant", "content": message["text"]})
+        else:
+            author = PERSONAS.get(message["author"])
+            name = author["name"] if author else "Utilizatorul"
+            chat_messages.append(
+                {"role": "user", "content": f"[{name}]: {message['text']}"}
+            )
 
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
@@ -163,6 +231,34 @@ async def ask_ollama(persona: dict, history: list[dict]) -> str:
         )
         response.raise_for_status()
         return response.json()["message"]["content"]
+
+
+def auto_post_delay() -> float:
+    return random.uniform(AUTO_POST_MIN_SECONDS, AUTO_POST_MAX_SECONDS)
+
+
+async def auto_post_once() -> dict | None:
+    """O postare automată în conversația activă: un personaj tras la sorți
+    (aceleași ponderi 80/20, deci chemările nestinse contează) spune ceva
+    din proprie inițiativă, pe baza istoricului."""
+    conversation = conversations.get(active_conversation_id)
+    if conversation is None:
+        return None
+    messages = conversation["messages"]
+    persona = choose_respondent(messages)
+    typing[conversation["id"]] = persona["id"]
+    try:
+        reply_text = await ask_ollama(persona, messages)
+    finally:
+        typing.pop(conversation["id"], None)
+    reply = {
+        "author": persona["id"],
+        "text": reply_text,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+    }
+    messages.append(reply)
+    save_conversation(conversation)
+    return reply
 
 
 @app.get("/api/health")
@@ -204,12 +300,20 @@ async def post_conversation():
 
 @app.get("/api/conversations/{conversation_id}/messages")
 async def get_messages(conversation_id: str):
-    return get_conversation_or_404(conversation_id)["messages"]
+    global active_conversation_id
+    conversation = get_conversation_or_404(conversation_id)
+    active_conversation_id = conversation_id
+    return {
+        "messages": conversation["messages"],
+        "typing": typing.get(conversation_id),
+    }
 
 
 @app.post("/api/conversations/{conversation_id}/messages", status_code=201)
 async def post_message(conversation_id: str, message: MessageIn):
+    global active_conversation_id
     conversation = get_conversation_or_404(conversation_id)
+    active_conversation_id = conversation_id
     messages = conversation["messages"]
     messages.append(
         {
@@ -220,9 +324,14 @@ async def post_message(conversation_id: str, message: MessageIn):
     )
     save_conversation(conversation)
     persona = choose_respondent(messages)
+    typing[conversation_id] = persona["id"]
+    try:
+        reply_text = await ask_ollama(persona, messages)
+    finally:
+        typing.pop(conversation_id, None)
     reply = {
         "author": persona["id"],
-        "text": await ask_ollama(persona, messages),
+        "text": reply_text,
         "timestamp": datetime.now().isoformat(timespec="seconds"),
     }
     messages.append(reply)

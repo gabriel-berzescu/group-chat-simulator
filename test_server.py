@@ -159,7 +159,9 @@ def test_conversations_are_loaded_from_disk(tmp_path):
     assert [c["id"] for c in conversations] == ["2026-08-10T09-00-00"]
     assert conversations[0]["message_count"] == 1
 
-    messages = client.get("/api/conversations/2026-08-10T09-00-00/messages").json()
+    messages = client.get("/api/conversations/2026-08-10T09-00-00/messages").json()[
+        "messages"
+    ]
     assert [m["text"] for m in messages] == ["bună dimineața"]
 
 
@@ -196,7 +198,9 @@ def test_conversation_survives_a_restart(monkeypatch, weighted_draw):
     server.load_conversations()  # simulează repornirea serverului
 
     assert [c["id"] for c in client.get("/api/conversations").json()] == [conversation_id]
-    messages = client.get(f"/api/conversations/{conversation_id}/messages").json()
+    messages = client.get(f"/api/conversations/{conversation_id}/messages").json()[
+        "messages"
+    ]
     assert [m["author"] for m in messages] == ["user", "eliade"]
 
 
@@ -215,8 +219,8 @@ def test_messages_are_scoped_to_their_conversation(monkeypatch, weighted_draw):
     second_id = client.post("/api/conversations").json()["id"]
     client.post(f"/api/conversations/{second_id}/messages", json={"text": "@eliade doi"})
 
-    first = client.get(f"/api/conversations/{first_id}/messages").json()
-    second = client.get(f"/api/conversations/{second_id}/messages").json()
+    first = client.get(f"/api/conversations/{first_id}/messages").json()["messages"]
+    second = client.get(f"/api/conversations/{second_id}/messages").json()["messages"]
     assert [m["author"] for m in first] == ["user", "eliade"]
     assert [m["author"] for m in second] == ["user", "eliade"]
     assert first[0]["text"] == "@eliade unu"
@@ -237,10 +241,10 @@ def test_unknown_conversation_returns_404():
 # --- Mesaje și personaje ---
 
 
-def test_messages_start_empty():
+def test_messages_start_empty_and_nobody_is_typing():
     response = client.get(f"/api/conversations/{newest_conversation_id()}/messages")
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {"messages": [], "typing": None}
 
 
 # --- Tragerea la sorți a respondentului (regula 80/20) ---
@@ -354,7 +358,9 @@ def test_message_gets_exactly_one_reply_drawn_with_the_weights(
     # respondentul vede în istoric mesajul utilizatorului
     assert calls == [(ALL_PERSONA_IDS[0], ["user"])]
 
-    messages = client.get(f"/api/conversations/{conversation_id}/messages").json()
+    messages = client.get(f"/api/conversations/{conversation_id}/messages").json()[
+        "messages"
+    ]
     assert [m["author"] for m in messages] == ["user", ALL_PERSONA_IDS[0]]
     assert messages[0]["text"] == "salut tuturor"
 
@@ -374,7 +380,9 @@ def test_mentioned_persona_wins_the_draw_with_80_percent(monkeypatch, weighted_d
     assert [r["author"] for r in response.json()] == ["eliade"]
     assert weighted_draw[0]["eliade"] == pytest.approx(0.8)
 
-    messages = client.get(f"/api/conversations/{conversation_id}/messages").json()
+    messages = client.get(f"/api/conversations/{conversation_id}/messages").json()[
+        "messages"
+    ]
     assert [m["author"] for m in messages] == ["user", "eliade"]
 
 
@@ -398,6 +406,122 @@ def test_unanswered_mention_is_favored_at_the_next_draw(monkeypatch, weighted_dr
     )
     assert weighted_draw[1]["bunica"] == pytest.approx(0.8)
     assert weighted_draw[1]["eliade"] == pytest.approx(0.2 / (len(ALL_PERSONA_IDS) - 1))
+
+
+# --- Faza 3: chatul „viu" ---
+
+
+def test_the_newest_conversation_is_active_after_startup():
+    assert server.active_conversation_id == newest_conversation_id()
+
+
+def test_creating_a_conversation_makes_it_active():
+    created = client.post("/api/conversations").json()
+    assert server.active_conversation_id == created["id"]
+
+
+def test_viewing_a_conversation_makes_it_active():
+    first_id = newest_conversation_id()
+    client.post("/api/conversations")
+
+    client.get(f"/api/conversations/{first_id}/messages")
+
+    assert server.active_conversation_id == first_id
+
+
+def test_typing_persona_is_exposed_while_waiting_for_ollama(monkeypatch, weighted_draw):
+    seen = {}
+
+    async def fake_ask_ollama(persona, history):
+        seen["during"] = dict(server.typing)
+        return "sacrul se ascunde în profan"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+    conversation_id = newest_conversation_id()
+
+    client.post(
+        f"/api/conversations/{conversation_id}/messages", json={"text": "@eliade salut"}
+    )
+
+    # cât a durat apelul la Ollama, eliade era „typing"; după, nu mai e nimeni
+    assert seen["during"] == {conversation_id: "eliade"}
+    response = client.get(f"/api/conversations/{conversation_id}/messages")
+    assert response.json()["typing"] is None
+
+
+def test_auto_post_adds_a_reply_to_the_active_conversation(
+    tmp_path, monkeypatch, weighted_draw
+):
+    async def fake_ask_ollama(persona, history):
+        return f"monolog de la {persona['id']}"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+    conversation_id = newest_conversation_id()
+
+    reply = asyncio.run(server.auto_post_once())
+
+    assert reply["author"] == ALL_PERSONA_IDS[0]  # ponderi egale → primul, determinist
+    messages = client.get(f"/api/conversations/{conversation_id}/messages").json()[
+        "messages"
+    ]
+    assert [m["author"] for m in messages] == [ALL_PERSONA_IDS[0]]
+    saved = json.loads(
+        (tmp_path / f"{conversation_id}.json").read_text(encoding="utf-8")
+    )
+    assert [m["author"] for m in saved["messages"]] == [ALL_PERSONA_IDS[0]]
+
+
+def test_auto_post_favors_unanswered_mentions(monkeypatch, weighted_draw):
+    async def fake_ask_ollama(persona, history):
+        return f"replică de la {persona['id']}"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+    conversation_id = newest_conversation_id()
+    client.post(
+        f"/api/conversations/{conversation_id}/messages",
+        json={"text": "@eliade și @bunica, voi ce ziceți?"},
+    )
+
+    # eliade a răspuns la mesaj; bunica e încă chemată, deci postarea automată o alege
+    reply = asyncio.run(server.auto_post_once())
+
+    assert reply["author"] == "bunica"
+
+
+def test_auto_post_sets_the_typing_flag_while_generating(monkeypatch, weighted_draw):
+    seen = {}
+
+    async def fake_ask_ollama(persona, history):
+        seen["during"] = dict(server.typing)
+        return "vorbesc singur"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+    conversation_id = newest_conversation_id()
+
+    asyncio.run(server.auto_post_once())
+
+    assert seen["during"] == {conversation_id: ALL_PERSONA_IDS[0]}
+    assert server.typing == {}
+
+
+def test_auto_post_delay_is_within_the_configured_interval():
+    assert server.AUTO_POST_MIN_SECONDS == 120
+    assert server.AUTO_POST_MAX_SECONDS == 480
+    for _ in range(20):
+        delay = server.auto_post_delay()
+        assert server.AUTO_POST_MIN_SECONDS <= delay <= server.AUTO_POST_MAX_SECONDS
+
+
+def test_every_persona_gets_the_shared_prompt_with_the_roster():
+    prompt = server.system_prompt_for(server.PERSONAS["eliade"])
+    # promptul propriu rămâne primul, promptul comun se adaugă după
+    assert prompt.startswith(server.PERSONAS["eliade"]["system_prompt"])
+    # ceilalți participanți sunt listați cu handle-ul de @, ca să-i poată chema
+    for pid in ALL_PERSONA_IDS:
+        if pid != "eliade":
+            assert f"(@{pid})" in prompt
+    # dar nu se listează pe sine
+    assert "(@eliade)" not in prompt
 
 
 def test_ask_ollama_builds_chat_request(monkeypatch):
@@ -441,9 +565,48 @@ def test_ask_ollama_builds_chat_request(monkeypatch):
     payload = captured["payload"]
     assert payload["stream"] is False
     assert payload["options"] == {"temperature": persona["temperature"]}
+    # mesajele celorlalți sunt etichetate cu autorul, ca modelul să știe
+    # cine ce a spus; propriile mesaje rămân neetichetate (rol assistant)
     assert payload["messages"] == [
-        {"role": "system", "content": persona["system_prompt"]},
-        {"role": "user", "content": "salut"},
+        {"role": "system", "content": server.system_prompt_for(persona)},
+        {"role": "user", "content": "[Utilizatorul]: salut"},
         {"role": "assistant", "content": "hop și-așa"},
-        {"role": "user", "content": "ce mai faci?"},
+        {"role": "user", "content": "[Utilizatorul]: ce mai faci?"},
     ]
+
+
+def test_other_personas_messages_are_labeled_with_their_name(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"message": {"content": "hm"}}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, json):
+            captured["payload"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr(server.httpx, "AsyncClient", FakeClient)
+
+    history = [
+        {"author": "eliade", "text": "sacrul e peste tot", "timestamp": "acum"},
+    ]
+    asyncio.run(server.ask_ollama(server.PERSONAS["bunica"], history))
+
+    assert captured["payload"]["messages"][1] == {
+        "role": "user",
+        "content": "[Mircea Eliade]: sacrul e peste tot",
+    }

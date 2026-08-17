@@ -58,9 +58,13 @@ Browser (frontend) ⇄ Backend (API HTTP) ⇄ Ollama (LLM local, localhost:11434
 ```
 server.py        — FastAPI + endpoints + logica personajelor
 personas.json    — definițiile personajelor (nume, emoji, system prompt, temperature)
+                   + shared_system_prompt, instrucțiuni comune adăugate tuturor
+                   (cu lista participanților, ca personajele să se cheme cu @)
 test_server.py   — teste (pytest)
 requirements.txt — dependențe (fastapi, uvicorn, httpx, pytest)
 conversations/   — câte un fișier JSON per conversație (creat la rulare, ignorat de git)
+experiments/     — unelte de laborator: rulează personajele fără browser și
+                   măsoară comportamentul (A/B pe prompturi); vezi README-ul lor
 static/
   index.html     — pagina (CSS-ul stă inline aici, nu în fișier separat)
   app.js

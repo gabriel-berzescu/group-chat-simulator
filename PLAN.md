@@ -116,14 +116,17 @@ ambele își păstrează mesajele (și fișierele JSON aferente pe disc).
       mențiune; mențiunea se stinge când personajul vorbește. Fără niciun
       personaj chemat (sau cu toate chemate), șansele sunt egale. Regula
       rămâne 80/20 indiferent de numărul de personaje.
-- [ ] Task de fundal (asyncio) în care personajele postează singure la
-      intervale aleatorii. În timpul dezvoltării: 10–30 secunde, configurabil;
-      default-ul "de producție" rămâne 2–8 minute, ca în spec.
-- [ ] Indicatorul "X is typing…": un flag pe backend expus prin
-      `GET /api/conversations/{id}/messages` (sau un endpoint separat),
-      afișat de UI cât timp se așteaptă Ollama. (UI-ul are deja un indicator
-      local cât așteaptă POST-ul utilizatorului; flag-ul pe backend e necesar
-      pentru mesajele postate automat.)
+- [x] Task de fundal (asyncio) în care personajele postează singure la
+      intervale aleatorii, doar în conversația activă (cea mai recent
+      creată/citită/scrisă). Cine postează se alege cu aceeași tragere la
+      sorți 80/20 (chemările nestinse contează și aici). Intervalul e
+      configurabil prin `AUTO_POST_MIN_SECONDS` / `AUTO_POST_MAX_SECONDS`
+      (în dezvoltare ex. 10/30); default-ul "de producție" rămâne 2–8
+      minute, ca în spec.
+- [x] Indicatorul "X is typing…": `GET /api/conversations/{id}/messages`
+      întoarce acum `{"messages": [...], "typing": <persona_id|null>}`, iar
+      UI-ul afișează avatarul personajului care scrie cât timp se așteaptă
+      Ollama — atât la răspunsuri, cât și la postările automate.
 
 **Test:** lași pagina deschisă și personajele încep să vorbească singure.
 
