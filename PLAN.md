@@ -56,8 +56,7 @@ pe o fundație care merge.
 - [x] Logica de alegere: dacă utilizatorul menționează personaje cu `@`
       (ex. `@Șmecherașul`), răspund doar cele menționate; dacă mesajul nu
       conține nicio mențiune, răspund toate personajele. *Regulă provizorie,
-      doar pentru faza asta — o orchestrare mai deșteaptă vine într-o fază
-      ulterioară, tot în MVP (de detaliat).*
+      doar pentru faza asta — înlocuită în Faza 3 de tragerea la sorți 80/20.*
 
 **Test:** un mesaj cu `@personaj` primește răspuns doar de la cel menționat;
 un mesaj fără mențiuni primește răspuns de la toate trei, fiecare cu vocea lui.
@@ -107,6 +106,16 @@ ambele își păstrează mesajele (și fișierele JSON aferente pe disc).
 
 ## Faza 3 — Chatul "viu"
 
+- [x] Orchestrarea răspunsurilor la mesajele utilizatorului (înlocuiește
+      regula provizorie din Faza 2): la fiecare mesaj răspunde **un singur
+      personaj**, tras la sorți. Personajele „chemate" împart egal 80% din
+      șanse, celelalte restul de 20% — ex., la 3 personaje: 2 chemate →
+      40% / 40% / 20%; unul chemat → 80% / 10% / 10%. Un personaj e „chemat"
+      dacă a fost menționat cu `@` în orice mesaj de până acum — inclusiv de
+      alt personaj, deci se pot chema între ele — și n-a mai postat de la
+      mențiune; mențiunea se stinge când personajul vorbește. Fără niciun
+      personaj chemat (sau cu toate chemate), șansele sunt egale. Regula
+      rămâne 80/20 indiferent de numărul de personaje.
 - [ ] Task de fundal (asyncio) în care personajele postează singure la
       intervale aleatorii. În timpul dezvoltării: 10–30 secunde, configurabil;
       default-ul "de producție" rămâne 2–8 minute, ca în spec.

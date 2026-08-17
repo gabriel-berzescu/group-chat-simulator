@@ -26,11 +26,13 @@ Browser (frontend) ⇄ Backend (API HTTP) ⇄ Ollama (LLM local, localhost:11434
   ca system prompt-uri pe backend.
 - Personajele trimit mesaje automat, la intervale aleatorii (2–8 minute),
   generate de Ollama pe baza personalității și a istoricului conversației.
-- Când utilizatorul scrie un mesaj, îi răspund (imediat, nu la intervalul
-  lung) personajele menționate cu `@` (ex. `@Șmecherașul`); dacă mesajul nu
-  conține nicio mențiune, răspund toate personajele. Regula asta e o primă
-  versiune — MVP-ul va primi o orchestrare mai deșteaptă (cine și când
-  răspunde) într-o fază ulterioară de implementare, de detaliat.
+- Când utilizatorul scrie un mesaj, îi răspunde (imediat, nu la intervalul
+  lung) un singur personaj, tras la sorți: personajele menționate cu `@`
+  (ex. `@Șmecherașul`) care n-au apucat să posteze de la mențiune împart
+  egal 80% din șanse, iar celelalte restul de 20%. Mențiunile se acumulează
+  din tot istoricul conversației — și personajele se pot menționa între
+  ele — și se sting când personajul respectiv postează. Fără nicio mențiune
+  în așteptare, șansele sunt egale.
 - Indicator "X is typing…" cât timp backend-ul așteaptă răspunsul de la Ollama.
 - Conversații multiple, persistate pe disc: fiecare conversație are propriul
   fișier JSON în `conversations/`, scris după fiecare mesaj și reîncărcat la

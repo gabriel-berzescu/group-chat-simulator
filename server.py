@@ -1,4 +1,5 @@
 import json
+import random
 import re
 import unicodedata
 from datetime import datetime
@@ -94,7 +95,7 @@ def mentioned_personas(text: str) -> list[dict]:
     """Personajele menționate cu @ în text, în ordinea din personas.json.
 
     O mențiune se potrivește după id sau după oricare cuvânt din nume,
-    ignorând diacriticele și majusculele. Regulă provizorie (vezi PLAN.md).
+    ignorând diacriticele și majusculele.
     """
     tokens = {_normalize(t) for t in re.findall(r"@(\w+)", text)}
     return [
@@ -102,6 +103,46 @@ def mentioned_personas(text: str) -> list[dict]:
         for p in PERSONAS.values()
         if tokens & ({p["id"]} | set(_normalize(p["name"]).split()))
     ]
+
+
+def pending_mentions(messages: list[dict]) -> set[str]:
+    """Id-urile personajelor „chemate": menționate cu @ într-un mesaj oarecare
+    (al utilizatorului sau al altui personaj) și care n-au mai postat de la
+    mențiune — postarea stinge mențiunea. Auto-mențiunile nu contează.
+    """
+    pending: set[str] = set()
+    for message in messages:
+        pending.discard(message["author"])
+        pending |= {
+            p["id"]
+            for p in mentioned_personas(message["text"])
+            if p["id"] != message["author"]
+        }
+    return pending
+
+
+def respondent_weights(messages: list[dict]) -> dict[str, float]:
+    """Ponderile tragerii la sorți pentru cine răspunde mesajului utilizatorului.
+
+    Personajele chemate (vezi pending_mentions) împart egal 80% din șanse,
+    celelalte restul de 20%. Dacă una dintre grupe e goală (niciun personaj
+    chemat sau toate chemate), șansele sunt egale.
+    """
+    mentioned = pending_mentions(messages)
+    unmentioned = [pid for pid in PERSONAS if pid not in mentioned]
+    if not mentioned or not unmentioned:
+        return {pid: 1 / len(PERSONAS) for pid in PERSONAS}
+    return {
+        pid: 0.8 / len(mentioned) if pid in mentioned else 0.2 / len(unmentioned)
+        for pid in PERSONAS
+    }
+
+
+def choose_respondent(messages: list[dict]) -> dict:
+    """Alege un singur personaj care să răspundă, prin tragere la sorți ponderată."""
+    weights = respondent_weights(messages)
+    (winner,) = random.choices(list(weights), weights=list(weights.values()))
+    return PERSONAS[winner]
 
 
 async def ask_ollama(persona: dict, history: list[dict]) -> str:
@@ -178,19 +219,15 @@ async def post_message(conversation_id: str, message: MessageIn):
         }
     )
     save_conversation(conversation)
-    respondents = mentioned_personas(message.text) or list(PERSONAS.values())
-    replies = []
-    for persona in respondents:
-        reply_text = await ask_ollama(persona, messages)
-        reply = {
-            "author": persona["id"],
-            "text": reply_text,
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-        }
-        messages.append(reply)
-        replies.append(reply)
-        save_conversation(conversation)
-    return replies
+    persona = choose_respondent(messages)
+    reply = {
+        "author": persona["id"],
+        "text": await ask_ollama(persona, messages),
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+    }
+    messages.append(reply)
+    save_conversation(conversation)
+    return [reply]
 
 
 load_conversations()

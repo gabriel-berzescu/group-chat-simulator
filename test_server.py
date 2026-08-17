@@ -19,6 +19,21 @@ def isolated_conversations(tmp_path, monkeypatch):
     server.load_conversations()
 
 
+@pytest.fixture
+def weighted_draw(monkeypatch):
+    """Face tragerea la sorți deterministă: câștigă ponderea maximă (primul
+    personaj, la egalitate). Întoarce lista tragerilor, ca testele să poată
+    verifica ponderile folosite."""
+    draws = []
+
+    def fake_choices(population, weights):
+        draws.append(dict(zip(population, weights)))
+        return [max(zip(population, weights), key=lambda pair: pair[1])[0]]
+
+    monkeypatch.setattr(server.random, "choices", fake_choices)
+    return draws
+
+
 def newest_conversation_id():
     return client.get("/api/conversations").json()[0]["id"]
 
@@ -148,7 +163,9 @@ def test_conversations_are_loaded_from_disk(tmp_path):
     assert [m["text"] for m in messages] == ["bună dimineața"]
 
 
-def test_posted_messages_are_saved_to_the_conversation_file(tmp_path, monkeypatch):
+def test_posted_messages_are_saved_to_the_conversation_file(
+    tmp_path, monkeypatch, weighted_draw
+):
     async def fake_ask_ollama(persona, history):
         return f"replică de la {persona['id']}"
 
@@ -162,11 +179,11 @@ def test_posted_messages_are_saved_to_the_conversation_file(tmp_path, monkeypatc
     )
     assert saved["id"] == conversation_id
     assert "created_at" in saved
-    assert [m["author"] for m in saved["messages"]] == ["user", *ALL_PERSONA_IDS]
+    assert [m["author"] for m in saved["messages"]] == ["user", ALL_PERSONA_IDS[0]]
     assert saved["messages"][0]["text"] == "salut"
 
 
-def test_conversation_survives_a_restart(monkeypatch):
+def test_conversation_survives_a_restart(monkeypatch, weighted_draw):
     async def fake_ask_ollama(persona, history):
         return "rămân aici și după restart"
 
@@ -183,7 +200,7 @@ def test_conversation_survives_a_restart(monkeypatch):
     assert [m["author"] for m in messages] == ["user", "eliade"]
 
 
-def test_messages_are_scoped_to_their_conversation(monkeypatch):
+def test_messages_are_scoped_to_their_conversation(monkeypatch, weighted_draw):
     histories = []
 
     async def fake_ask_ollama(persona, history):
@@ -226,7 +243,94 @@ def test_messages_start_empty():
     assert response.json() == []
 
 
-def test_message_without_mention_gets_replies_from_all_personas(monkeypatch):
+# --- Tragerea la sorți a respondentului (regula 80/20) ---
+
+
+def msg(author, text):
+    return {"author": author, "text": text, "timestamp": "2026-08-17T12:00:00"}
+
+
+def uniform_weights():
+    return {pid: pytest.approx(1 / len(ALL_PERSONA_IDS)) for pid in ALL_PERSONA_IDS}
+
+
+def test_weights_give_a_single_mentioned_persona_80_percent():
+    weights = server.respondent_weights([msg("user", "@eliade ce părere ai?")])
+    rest = {pid for pid in ALL_PERSONA_IDS if pid != "eliade"}
+    assert weights["eliade"] == pytest.approx(0.8)
+    assert all(weights[pid] == pytest.approx(0.2 / len(rest)) for pid in rest)
+    assert sum(weights.values()) == pytest.approx(1)
+
+
+def test_weights_split_the_80_percent_between_mentioned_personas():
+    weights = server.respondent_weights([msg("user", "@eliade și @bunica, voi ce ziceți?")])
+    rest = {pid for pid in ALL_PERSONA_IDS if pid not in {"eliade", "bunica"}}
+    assert weights["eliade"] == weights["bunica"] == pytest.approx(0.4)
+    assert all(weights[pid] == pytest.approx(0.2 / len(rest)) for pid in rest)
+
+
+def test_weights_are_equal_without_mentions():
+    assert server.respondent_weights([msg("user", "salut tuturor")]) == uniform_weights()
+
+
+def test_weights_are_equal_when_everyone_is_mentioned():
+    text = " ".join(f"@{pid}" for pid in ALL_PERSONA_IDS)
+    assert server.respondent_weights([msg("user", text)]) == uniform_weights()
+
+
+def test_unknown_mention_counts_as_no_mention():
+    assert server.respondent_weights([msg("user", "@necunoscut salut")]) == uniform_weights()
+
+
+def test_mentions_match_display_names_ignoring_diacritics():
+    weights = server.respondent_weights(
+        [msg("user", "@Șmecherașul și @Cantaretul, voi ce ziceți?")]
+    )
+    assert weights["cantaretul"] == weights["smecherasul"] == pytest.approx(0.4)
+
+
+def test_mention_by_name_word_matches_persona():
+    weights = server.respondent_weights([msg("user", "@Mircea, tu ce crezi?")])
+    assert weights["eliade"] == pytest.approx(0.8)
+
+
+def test_mention_stays_active_until_the_persona_speaks():
+    weights = server.respondent_weights(
+        [
+            msg("user", "@eliade și @bunica, voi ce ziceți?"),
+            msg("eliade", "sacrul se ascunde în profan"),
+            msg("user", "interesant, mai spuneți"),
+        ]
+    )
+    # bunica e încă „chemată"; mențiunea lui eliade s-a stins când a vorbit
+    assert weights["bunica"] == pytest.approx(0.8)
+    assert weights["eliade"] == pytest.approx(0.2 / (len(ALL_PERSONA_IDS) - 1))
+
+
+def test_personas_can_mention_each_other():
+    weights = server.respondent_weights(
+        [
+            msg("user", "salut tuturor"),
+            msg("cantaretul", "asta să i-o spui lui @eliade, că el le știe"),
+        ]
+    )
+    assert weights["eliade"] == pytest.approx(0.8)
+
+
+def test_a_persona_mentioning_itself_is_not_favored():
+    weights = server.respondent_weights(
+        [msg("cantaretul", "eu, @cantaretul, așa zic mereu")]
+    )
+    assert weights == uniform_weights()
+
+
+def test_choose_respondent_returns_a_known_persona():
+    assert server.choose_respondent([msg("user", "salut")])["id"] in ALL_PERSONA_IDS
+
+
+def test_message_gets_exactly_one_reply_drawn_with_the_weights(
+    monkeypatch, weighted_draw
+):
     calls = []
 
     async def fake_ask_ollama(persona, history):
@@ -241,21 +345,21 @@ def test_message_without_mention_gets_replies_from_all_personas(monkeypatch):
     )
     assert response.status_code == 201
     replies = response.json()
-    assert [r["author"] for r in replies] == ALL_PERSONA_IDS
+    assert [r["author"] for r in replies] == [ALL_PERSONA_IDS[0]]
     assert replies[0]["text"] == f"replică de la {ALL_PERSONA_IDS[0]}"
-    assert all("timestamp" in r for r in replies)
+    assert "timestamp" in replies[0]
 
-    # fiecare personaj vede în istoric replicile celor care au răspuns înaintea lui
-    assert [history for _, history in calls] == [
-        ["user", *ALL_PERSONA_IDS[:i]] for i in range(len(ALL_PERSONA_IDS))
-    ]
+    # fără mențiuni, tragerea la sorți s-a făcut cu ponderi egale
+    assert weighted_draw == [uniform_weights()]
+    # respondentul vede în istoric mesajul utilizatorului
+    assert calls == [(ALL_PERSONA_IDS[0], ["user"])]
 
     messages = client.get(f"/api/conversations/{conversation_id}/messages").json()
-    assert [m["author"] for m in messages] == ["user", *ALL_PERSONA_IDS]
+    assert [m["author"] for m in messages] == ["user", ALL_PERSONA_IDS[0]]
     assert messages[0]["text"] == "salut tuturor"
 
 
-def test_mentioned_persona_is_the_only_one_replying(monkeypatch):
+def test_mentioned_persona_wins_the_draw_with_80_percent(monkeypatch, weighted_draw):
     async def fake_ask_ollama(persona, history):
         return "sacrul se ascunde în profan"
 
@@ -268,48 +372,32 @@ def test_mentioned_persona_is_the_only_one_replying(monkeypatch):
     )
     assert response.status_code == 201
     assert [r["author"] for r in response.json()] == ["eliade"]
+    assert weighted_draw[0]["eliade"] == pytest.approx(0.8)
 
     messages = client.get(f"/api/conversations/{conversation_id}/messages").json()
     assert [m["author"] for m in messages] == ["user", "eliade"]
 
 
-def test_mentions_match_display_names_ignoring_diacritics(monkeypatch):
+def test_unanswered_mention_is_favored_at_the_next_draw(monkeypatch, weighted_draw):
     async def fake_ask_ollama(persona, history):
         return f"replică de la {persona['id']}"
 
     monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+    conversation_id = newest_conversation_id()
 
+    # eliade și bunica sunt chemați; câștigă eliade (primul la egalitate de ponderi)
     response = client.post(
-        f"/api/conversations/{newest_conversation_id()}/messages",
-        json={"text": "@Șmecherașul și @Cantaretul, voi ce ziceți?"},
-    )
-    assert [r["author"] for r in response.json()] == ["cantaretul", "smecherasul"]
-
-
-def test_mention_by_name_word_matches_persona(monkeypatch):
-    async def fake_ask_ollama(persona, history):
-        return "hermeneutică"
-
-    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
-
-    response = client.post(
-        f"/api/conversations/{newest_conversation_id()}/messages",
-        json={"text": "@Mircea, tu ce crezi?"},
+        f"/api/conversations/{conversation_id}/messages",
+        json={"text": "@eliade și @bunica, voi ce ziceți?"},
     )
     assert [r["author"] for r in response.json()] == ["eliade"]
 
-
-def test_unknown_mention_counts_as_no_mention(monkeypatch):
-    async def fake_ask_ollama(persona, history):
-        return f"replică de la {persona['id']}"
-
-    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
-
-    response = client.post(
-        f"/api/conversations/{newest_conversation_id()}/messages",
-        json={"text": "@necunoscut salut"},
+    # bunica n-a apucat să răspundă, deci la următorul mesaj are singură cei 80%
+    client.post(
+        f"/api/conversations/{conversation_id}/messages", json={"text": "mai ziceți ceva"}
     )
-    assert [r["author"] for r in response.json()] == ALL_PERSONA_IDS
+    assert weighted_draw[1]["bunica"] == pytest.approx(0.8)
+    assert weighted_draw[1]["eliade"] == pytest.approx(0.2 / (len(ALL_PERSONA_IDS) - 1))
 
 
 def test_ask_ollama_builds_chat_request(monkeypatch):

@@ -37,8 +37,10 @@ Browser (frontend) ⇄ Backend FastAPI ⇄ Ollama (LLM local)
 Backend-ul ține conversațiile în memorie și le salvează pe disc (câte un
 fișier JSON per conversație, în `conversations/`), construiește prompt-ul
 fiecărui personaj și cheamă Ollama pentru fiecare replică. Când scrii ceva,
-îți răspund imediat personajele pe care le menționezi cu `@` — sau toate,
-dacă nu menționezi pe nimeni. Din UI poți comuta între conversații sau începe
+îți răspunde imediat un singur personaj, tras la sorți: cele menționate cu
+`@` — oriunde în conversație, chiar de alte personaje — și care n-au apucat
+încă să răspundă împart 80% din șanse, restul 20% (fără mențiuni în
+așteptare, șansele sunt egale). Din UI poți comuta între conversații sau începe
 una nouă. Postarea automată la intervale aleatorii vine în Faza 3.
 
 ## Cerințe
