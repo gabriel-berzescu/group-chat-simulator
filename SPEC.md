@@ -73,8 +73,12 @@ static/
 ### API minimal
 
 - `GET  /api/conversations` — lista conversațiilor (id, data creării,
-  numărul de mesaje).
+  titlul dat manual — `null` dacă n-are — și numărul de mesaje).
 - `POST /api/conversations` — începe o conversație nouă.
+- `PATCH  /api/conversations/{id}` — redenumește conversația (`{"title": …}`);
+  un titlu gol o readuce la eticheta implicită, cu data creării.
+- `DELETE /api/conversations/{id}` — șterge conversația, din memorie și de pe
+  disc. Rămâne mereu cel puțin una: dacă era ultima, se începe una nouă, goală.
 - `GET  /api/conversations/{id}/messages` — mesajele unei conversații.
 - `POST /api/conversations/{id}/messages` — utilizatorul trimite un mesaj
   în conversația respectivă.

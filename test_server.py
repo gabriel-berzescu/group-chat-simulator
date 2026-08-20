@@ -115,7 +115,8 @@ def test_a_fresh_server_starts_with_one_empty_conversation():
     conversations = response.json()
     assert len(conversations) == 1
     (conversation,) = conversations
-    assert set(conversation) == {"id", "created_at", "message_count"}
+    assert set(conversation) == {"id", "created_at", "title", "message_count"}
+    assert conversation["title"] is None
     assert conversation["message_count"] == 0
 
 
@@ -135,6 +136,99 @@ def test_new_conversation_is_created_and_listed_first():
     assert ids[0] == created["id"]
     assert existing_id in ids
     assert len(set(ids)) == 2
+
+
+def test_conversation_is_renamed_and_title_persists(tmp_path):
+    conversation_id = newest_conversation_id()
+
+    response = client.patch(
+        f"/api/conversations/{conversation_id}", json={"title": "  Bairam  "}
+    )
+    assert response.status_code == 200
+    assert response.json()["title"] == "Bairam"
+
+    assert client.get("/api/conversations").json()[0]["title"] == "Bairam"
+    saved = json.loads((tmp_path / f"{conversation_id}.json").read_text(encoding="utf-8"))
+    assert saved["title"] == "Bairam"
+
+
+def test_long_title_is_capped():
+    conversation_id = newest_conversation_id()
+    response = client.patch(
+        f"/api/conversations/{conversation_id}", json={"title": "a" * 200}
+    )
+    assert response.json()["title"] == "a" * server.MAX_TITLE_LENGTH
+
+
+def test_empty_title_restores_the_default_label():
+    conversation_id = newest_conversation_id()
+    client.patch(f"/api/conversations/{conversation_id}", json={"title": "Bairam"})
+
+    response = client.patch(f"/api/conversations/{conversation_id}", json={"title": "   "})
+    assert response.status_code == 200
+    assert response.json()["title"] is None
+
+
+def test_renaming_a_missing_conversation_is_404():
+    response = client.patch("/api/conversations/nu-exista", json={"title": "x"})
+    assert response.status_code == 404
+
+
+def test_deleted_conversation_disappears_from_list_and_disk(tmp_path, monkeypatch, weighted_draw):
+    async def fake_ask_ollama(persona, history):
+        return "ceva"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+    kept_id = newest_conversation_id()
+    doomed_id = client.post("/api/conversations").json()["id"]
+    client.post(f"/api/conversations/{doomed_id}/messages", json={"text": "salut"})
+    assert (tmp_path / f"{doomed_id}.json").exists()
+
+    response = client.delete(f"/api/conversations/{doomed_id}")
+    assert response.status_code == 204
+
+    assert [c["id"] for c in client.get("/api/conversations").json()] == [kept_id]
+    assert not (tmp_path / f"{doomed_id}.json").exists()
+    assert client.get(f"/api/conversations/{doomed_id}/messages").status_code == 404
+
+
+def test_deleting_an_empty_conversation_without_a_file_works():
+    doomed_id = client.post("/api/conversations").json()["id"]
+    assert client.delete(f"/api/conversations/{doomed_id}").status_code == 204
+    assert doomed_id not in [c["id"] for c in client.get("/api/conversations").json()]
+
+
+def test_deleting_the_last_conversation_leaves_a_fresh_empty_one(monkeypatch, weighted_draw):
+    async def fake_ask_ollama(persona, history):
+        return "ceva"
+
+    monkeypatch.setattr(server, "ask_ollama", fake_ask_ollama)
+    only_id = newest_conversation_id()
+    client.post(f"/api/conversations/{only_id}/messages", json={"text": "salut"})
+
+    assert client.delete(f"/api/conversations/{only_id}").status_code == 204
+
+    # id-ul se derivă din secunda curentă, deci poate fi chiar același;
+    # ce contează e că a rămas o conversație și că e goală
+    conversations = client.get("/api/conversations").json()
+    assert len(conversations) == 1
+    assert conversations[0]["message_count"] == 0
+    fresh_id = conversations[0]["id"]
+    assert client.get(f"/api/conversations/{fresh_id}/messages").json()["messages"] == []
+
+
+def test_deleting_the_active_conversation_moves_auto_posts_elsewhere():
+    kept_id = newest_conversation_id()
+    doomed_id = client.post("/api/conversations").json()["id"]
+    assert server.active_conversation_id == doomed_id
+
+    client.delete(f"/api/conversations/{doomed_id}")
+
+    assert server.active_conversation_id == kept_id
+
+
+def test_deleting_a_missing_conversation_is_404():
+    assert client.delete("/api/conversations/nu-exista").status_code == 404
 
 
 def test_conversations_are_loaded_from_disk(tmp_path):

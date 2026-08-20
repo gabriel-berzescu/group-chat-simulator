@@ -23,6 +23,9 @@ CONVERSATIONS_DIR = Path(__file__).parent / "conversations"
 AUTO_POST_MIN_SECONDS = float(os.environ.get("AUTO_POST_MIN_SECONDS", "120"))
 AUTO_POST_MAX_SECONDS = float(os.environ.get("AUTO_POST_MAX_SECONDS", "480"))
 
+# Titlul dat manual unei conversații; peste atât, tăiem.
+MAX_TITLE_LENGTH = 80
+
 _personas_config = json.loads(
     (Path(__file__).parent / "personas.json").read_text(encoding="utf-8")
 )
@@ -67,6 +70,10 @@ class MessageIn(BaseModel):
     text: str
 
 
+class ConversationPatch(BaseModel):
+    title: str
+
+
 def new_conversation() -> dict:
     global active_conversation_id
     now = datetime.now()
@@ -85,6 +92,10 @@ def new_conversation() -> dict:
     return conversation
 
 
+def newest_conversation_id() -> str:
+    return max(conversations.values(), key=lambda c: (c["created_at"], c["id"]))["id"]
+
+
 def load_conversations() -> None:
     """Încarcă toate conversațiile de pe disc; dacă nu există niciuna, începe una nouă.
 
@@ -100,9 +111,7 @@ def load_conversations() -> None:
             conversations[conversation["id"]] = conversation
     if not conversations:
         new_conversation()
-    active_conversation_id = max(
-        conversations.values(), key=lambda c: (c["created_at"], c["id"])
-    )["id"]
+    active_conversation_id = newest_conversation_id()
 
 
 def save_conversation(conversation: dict) -> None:
@@ -117,6 +126,8 @@ def conversation_summary(conversation: dict) -> dict:
     return {
         "id": conversation["id"],
         "created_at": conversation["created_at"],
+        # None = neredenumită; frontend-ul afișează atunci data creării
+        "title": conversation.get("title"),
         "message_count": len(conversation["messages"]),
     }
 
@@ -296,6 +307,37 @@ async def get_conversations():
 @app.post("/api/conversations", status_code=201)
 async def post_conversation():
     return conversation_summary(new_conversation())
+
+
+@app.patch("/api/conversations/{conversation_id}")
+async def patch_conversation(conversation_id: str, patch: ConversationPatch):
+    """Redenumește o conversație; un titlu gol o readuce la eticheta cu data."""
+    conversation = get_conversation_or_404(conversation_id)
+    title = patch.title.strip()[:MAX_TITLE_LENGTH]
+    if title:
+        conversation["title"] = title
+    else:
+        conversation.pop("title", None)
+    save_conversation(conversation)
+    return conversation_summary(conversation)
+
+
+@app.delete("/api/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(conversation_id: str):
+    """Șterge conversația, din memorie și de pe disc.
+
+    Aplicația are mereu cel puțin o conversație: dacă tocmai am șters-o pe
+    ultima, pornim una nouă, goală.
+    """
+    global active_conversation_id
+    get_conversation_or_404(conversation_id)
+    del conversations[conversation_id]
+    (CONVERSATIONS_DIR / f"{conversation_id}.json").unlink(missing_ok=True)
+    typing.pop(conversation_id, None)
+    if not conversations:
+        new_conversation()
+    elif active_conversation_id == conversation_id:
+        active_conversation_id = newest_conversation_id()
 
 
 @app.get("/api/conversations/{conversation_id}/messages")
